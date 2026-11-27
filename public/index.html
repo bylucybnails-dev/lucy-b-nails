@@ -195,8 +195,16 @@ showAccount=function(tab){
  c.innerHTML='<h3>Elegí tu nueva contraseña</h3><form><label>Nueva contraseña<input type="password" name="password" minlength="8" required autocomplete="new-password"></label><label>Repetir contraseña<input type="password" name="repeat" minlength="8" required autocomplete="new-password"></label><button class="primary" type="submit">Guardar contraseña</button></form><button class="secondary" onclick="showAccount(\'profile\')">Volver</button>';
  const f=c.querySelector('form');f.onsubmit=async e=>{e.preventDefault();if(f.elements.password.value!==f.elements.repeat.value){$('accountStatus').textContent='Las contraseñas no coinciden.';return}const b=f.querySelector('button');b.disabled=true;try{await request('/auth/v1/user',{method:'PUT',body:JSON.stringify({password:f.elements.password.value})},customerSession.access_token);f.reset();await signOutAccount();showAccount('login');$('accountStatus').textContent='Contraseña actualizada. Iniciá sesión nuevamente.'}catch{$('accountStatus').textContent='No se pudo actualizar la contraseña. Volvé a solicitar el enlace o iniciá sesión.'}finally{b.disabled=false}};
 };
-const recoveryFlow=['recovery','invite'].includes(new URLSearchParams(location.hash.slice(1)).get('type'));
-restoreAccount().then(()=>{if(recoveryFlow&&customerSession)showAccount('newpassword')});
+const authCallback=new URLSearchParams(location.hash.slice(1));
+const authCallbackType=authCallback.get('type');
+const authCallbackError=authCallback.has('error')||authCallback.has('error_code');
+const recoveryFlow=['recovery','invite'].includes(authCallbackType);
+const confirmationFlow=authCallbackType==='signup'||authCallbackType==='email';
+restoreAccount().then(()=>{
+ if(authCallbackError){history.replaceState(null,'',location.pathname+location.search);showAccount('login');$('accountStatus').textContent='El enlace no es válido o venció. Solicitá uno nuevo desde Mi cuenta.';return}
+ if(recoveryFlow){if(customerSession)showAccount('newpassword');else{showAccount('login');$('accountStatus').textContent='No se pudo validar el enlace. Volvé a solicitar la recuperación.'}return}
+ if(confirmationFlow){showAccount(customerSession?'profile':'login');$('accountStatus').textContent=customerSession?'¡Correo confirmado! Tu cuenta está lista.':'Ingresá con tu correo y contraseña. Si no podés acceder, solicitá un nuevo enlace.'}
+});
 
 
 const releaseRender=render;
