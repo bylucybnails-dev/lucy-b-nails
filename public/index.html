@@ -456,7 +456,7 @@ if(mpResult){const u=new URL(location.href);u.searchParams.delete('mp_connection
 
 // Checkout is intentionally gated. Enable only after provider and reservation tests.
 const PUBLIC_CHECKOUT_RELEASED=false;
-const TURNSTILE_SITE_KEY=''; // Public site key for Lucy; never put the secret here.
+const TURNSTILE_SITE_KEY='0x4AAAAAAGWVL0eL3cUxUW_4'; // Public site key for Lucy; never put the secret here.
 const checkoutKey='lucyb-checkout-receipt-v1';
 let checkoutSnapshot=null,checkoutPreview=false,checkoutBusy=false,checkoutCaptchaToken='',checkoutCaptchaWidget=null,checkoutCaptchaLoader=null;
 async function prepareCheckoutCaptcha(){
@@ -548,7 +548,27 @@ if(paymentReturn){
 const checkoutRender=render;
 render=function(){checkoutRender();if(!PUBLIC_CHECKOUT_RELEASED||!selectedCheckout())return;const b=document.createElement('button');b.className='primary';b.textContent='Reservar y pagar seña · '+money(depositValue());b.onclick=()=>openDepositCheckout(false);const summary=$('summary'),wa=summary.querySelector('button[onclick="prepareSend()"]');if(wa){wa.className='secondary';wa.before(b)}else summary.append(b)};
 const checkoutAdmin=editRender;
-editRender=function(){checkoutAdmin();if(adminTab!=='payments'||!ownerSession())return;const c=$('adminContent');const box=document.createElement('section');box.className='adminbox';const title=document.createElement('h3');title.textContent='Reserva online';const p=document.createElement('p');p.className='muted';p.textContent='Vista previa del checkout para clientas. Los cobros y las reservas online siguen desactivados.';const button=document.createElement('button');button.type='button';button.className='secondary';button.textContent='Probar vista previa del checkout';button.onclick=()=>openDepositCheckout(true);box.append(title,p,button);c.append(box)};
+editRender=function(){checkoutAdmin();if(adminTab!=='payments'||!ownerSession())return;const c=$('adminContent');const box=document.createElement('section');box.className='adminbox';const title=document.createElement('h3');title.textContent='Reserva online';const p=document.createElement('p');p.className='muted';p.textContent='Vista previa del checkout para clientas. Los cobros y las reservas online siguen desactivados.';const button=document.createElement('button');button.type='button';button.className='secondary';button.textContent='Probar vista previa del checkout';button.onclick=()=>openDepositCheckout(true);box.append(title,p,button);
+ const test=document.createElement('button');test.type='button';test.className='secondary';test.textContent='Probar protección antirrobots';
+ const holder=document.createElement('div'),out=document.createElement('p');out.className='muted';out.setAttribute('role','status');box.append(test,holder,out);c.append(box);
+ let widget=null;
+ test.onclick=async()=>{
+  if(!ownerSession())return;test.disabled=true;out.textContent='Cargando comprobación de seguridad…';
+  try{
+   if(!window.turnstile){if(!checkoutCaptchaLoader)checkoutCaptchaLoader=new Promise((resolve,reject)=>{const script=document.createElement('script');script.src='https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';script.async=true;script.onload=resolve;script.onerror=reject;document.head.append(script)});await checkoutCaptchaLoader}
+   if(!holder.isConnected)return;
+   if(widget!==null)window.turnstile.remove(widget);
+   widget=window.turnstile.render(holder,{sitekey:TURNSTILE_SITE_KEY,action:'booking_checkout',callback:async token=>{
+    out.textContent='Validando con Cloudflare desde el servidor…';
+    try{
+     const res=await fetch(API+'/functions/v1/booking-checkout?diagnostic=turnstile',{method:'POST',headers:{apikey:KEY,Authorization:'Bearer '+adminToken,'Content-Type':'application/json'},body:JSON.stringify({token})});
+     const v=await res.json();
+     out.textContent=res.ok&&v.verified===true?'Protección antirrobots verificada por el servidor. No se realizó ninguna reserva ni cobro.':'No se pudo validar la protección ('+(v.error||res.status)+').';
+    }catch{out.textContent='No se pudo comprobar la protección.'}finally{test.disabled=false}
+   },'error-callback':()=>{out.textContent='Cloudflare no pudo cargar la comprobación.';test.disabled=false},'expired-callback':()=>{out.textContent='La comprobación venció. Volvé a probar.';test.disabled=false}});
+  }catch{checkoutCaptchaLoader=null;out.textContent='No se pudo cargar el widget.';test.disabled=false}
+ };
+};
 
 render();loadConfig().catch(()=>{onlineReady=false;render()});
 </script></html>
