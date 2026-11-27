@@ -415,5 +415,25 @@ showAccount=function(tab){
  const f=c.querySelector('form'),b=f.querySelector('button');f.onsubmit=async e=>{e.preventDefault();b.disabled=true;try{await request('/auth/v1/resend?redirect_to='+encodeURIComponent(location.origin+'/'),{method:'POST',body:JSON.stringify({type:'signup',email:f.elements.email.value.trim().toLowerCase()})});if(accountTab==='resend')$('accountStatus').textContent='Si la cuenta está pendiente de confirmar, recibirás un nuevo enlace. Revisá tu correo y spam.'}catch{if(accountTab==='resend')$('accountStatus').textContent='No pudimos solicitar otro enlace. Esperá un momento y volvé a intentarlo.'}finally{b.disabled=false}};
 };
 
+
+const paymentPrepEdit=editRender;
+editRender=function(){
+ paymentPrepEdit();if(adminTab!=='payments'||!ownerSession())return;
+ const c=$('adminContent');if(!c)return;
+ const details=document.createElement('details');details.className='settingsCard';details.id='durationSetup';
+ const heading=document.createElement('summary');heading.textContent='Preparar reservas online · Duración de servicios';
+ const body=document.createElement('div');body.className='bookingForm';
+ const intro=document.createElement('p');intro.className='muted';intro.textContent='Completá los minutos reales de cada servicio y retiro, y los minutos adicionales de decoración. Esto evita ofrecer horarios que se superponen. Los cobros online siguen desactivados.';body.append(intro);
+ const status=document.createElement('p');status.setAttribute('aria-live','polite');body.append(status);
+ const groups=[['services','Servicios'],['extras','Decoraciones'],['own','Retiro para descanso'],['other','Retiro de otra colega']];
+ const valid=(k,v)=>Number.isInteger(v)&&v>=(k==='extras'?0:15)&&v<=480;
+ function update(){let total=0,ready=0;for(const [k] of groups)for(const row of draft[k]||[]){total++;if(valid(k,row[4]))ready++}status.textContent=ready+' de '+total+' duraciones configuradas'+(ready===total&&total>0?' · Listo para guardar y revisar la integración.':' · Faltan '+(total-ready)+'.')}
+ for(const [k,title] of groups){const section=document.createElement('details');section.className='settingsCard';const label=document.createElement('summary');label.textContent=title;section.append(label);
+ for(const row of draft[k]||[]){const wrapper=document.createElement('label');wrapper.className='adminfield';wrapper.style.padding='8px 12px';wrapper.textContent=row[0]+(k==='extras'&&row[3]==='pair'?' (por par)':'');const field=document.createElement('input');field.type='number';field.min=k==='extras'?'0':'15';field.max='480';field.step='5';field.placeholder='Minutos';field.value=row[4]??'';field.style.maxWidth='140px';field.oninput=()=>{row[4]=field.value===''?null:Number(field.value);update()};wrapper.append(field);section.append(wrapper)}
+ body.append(section)}
+ const note=document.createElement('p');note.className='muted';note.textContent='No se aplican cambios hasta tocar Guardar configuración. La duración se utiliza en ambas ciudades; los precios siguen siendo independientes.';body.append(note);
+ details.append(heading,body);c.append(details);update();
+};
+
 render();loadConfig().catch(()=>{onlineReady=false;render()});
 </script></html>
