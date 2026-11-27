@@ -402,5 +402,18 @@ const requestMessageSave=saveAdmin;saveAdmin=function(){if(!ownerSession())retur
 
 adminDate=today();adminMonth=adminDate.slice(0,7);
 $('admin').addEventListener('cancel',ev=>{ev.preventDefault();if(!$('admin').querySelector('.adminfooter .primary')?.disabled)closeAdmin()});
+
+const emailAccountView=showAccount;
+showAccount=function(tab){
+ if(tab!=='resend'){
+  emailAccountView(tab);
+  if(['login','signup'].includes(accountTab)&&!customerUser){const b=document.createElement('button');b.className='secondary';b.type='button';b.textContent='Reenviar correo de confirmación';b.onclick=()=>showAccount('resend');$('accountBody').append(b)}
+  return;
+ }
+ accountTab='resend';$('accountStatus').textContent='';if(!$('account').open)$('account').showModal();$('accountTabs').replaceChildren();
+ const c=$('accountBody');c.innerHTML='<h3>Confirmá tu correo</h3><p>Si no recibiste el correo de confirmación, revisá también la carpeta de spam o solicitá un nuevo enlace.</p><form><label>Correo electrónico<input type="email" name="email" autocomplete="email" required></label><button class="primary" type="submit">Reenviar confirmación</button></form><button class="secondary" type="button" onclick="showAccount(\'login\')">Volver</button>';
+ const f=c.querySelector('form'),b=f.querySelector('button');f.onsubmit=async e=>{e.preventDefault();b.disabled=true;try{await request('/auth/v1/resend?redirect_to='+encodeURIComponent(location.origin+'/'),{method:'POST',body:JSON.stringify({type:'signup',email:f.elements.email.value.trim().toLowerCase()})});if(accountTab==='resend')$('accountStatus').textContent='Si la cuenta está pendiente de confirmar, recibirás un nuevo enlace. Revisá tu correo y spam.'}catch{if(accountTab==='resend')$('accountStatus').textContent='No pudimos solicitar otro enlace. Esperá un momento y volvé a intentarlo.'}finally{b.disabled=false}};
+};
+
 render();loadConfig().catch(()=>{onlineReady=false;render()});
 </script></html>
