@@ -1,0 +1,1 @@
+grant select(id,payload,revision), update(revision) on public.shop_config to service_role;
