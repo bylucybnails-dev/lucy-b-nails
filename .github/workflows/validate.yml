@@ -1,0 +1,30 @@
+name: Validate website
+on:
+  push:
+    paths:
+      - 'public/index.html'
+      - '.github/workflows/validate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  syntax:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Check inline JavaScript and critical markup
+        run: |
+          node --input-type=module <<'JS'
+          import fs from 'node:fs';
+          import vm from 'node:vm';
+          import assert from 'node:assert/strict';
+          const html = fs.readFileSync('public/index.html', 'utf8');
+          const scripts = [...html.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script>/gi)];
+          assert(scripts.length, 'No inline scripts found');
+          for(const [, code] of scripts) new vm.Script(code);
+          for(const id of ['zones','options','summary','admin','account','publicBanner','ownerNav']) assert(html.includes('id="'+id+'"'), 'Missing '+id);
+          assert(html.includes('publicSlotFits'));
+          assert(html.includes('approvedMixedDays'));
+          console.log('JavaScript syntax and essential markup passed');
+          JS
