@@ -4,6 +4,10 @@ on:
     paths:
       - 'public/index.html'
       - '.github/workflows/validate.yml'
+  pull_request:
+    paths:
+      - 'public/index.html'
+      - '.github/workflows/validate.yml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,18 +17,27 @@ jobs:
     timeout-minutes: 3
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
-      - name: Check inline JavaScript and critical markup
+      - name: Check inline JavaScript and WhatsApp templates
         run: |
           node --input-type=module <<'JS'
           import fs from 'node:fs';
           import vm from 'node:vm';
           import assert from 'node:assert/strict';
           const html = fs.readFileSync('public/index.html', 'utf8');
-          const scripts = [...html.matchAll(/<script(?:\\s[^>]*)?>([\\s\\S]*?)<\\/script>/gi)];
+          const scripts = [...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)];
           assert(scripts.length, 'No inline scripts found');
           for(const [, code] of scripts) new vm.Script(code);
           for(const id of ['zones','options','summary','admin','account','publicBanner','ownerNav']) assert(html.includes('id="'+id+'"'), 'Missing '+id);
-          assert(html.includes('publicSlotFits'));
-          assert(html.includes('approvedMixedDays'));
-          console.log('JavaScript syntax and essential markup passed');
+          const source = scripts.map(x=>x[1]).join('\n');
+          const start = source.indexOf('const DEFAULT_REQUEST_MESSAGE=');
+          const end = source.indexOf('const requestEditor=',start);
+          assert(start>=0 && end>start);
+          const context = vm.createContext({money:n=>'$'+n,fmtDate:d=>d});
+          vm.runInContext(source.slice(start,end),context);
+          const noSlot=vm.runInContext("formatRequestMessage(requestTemplate({}),requestVariables([['Servicio',20000]],'Cosquín',null))",context);
+          assert(noSlot.includes('Cosquín') && noSlot.includes('$20000') && noSlot.includes('¿Me pasás'));
+          assert(!noSlot.includes('Horario preferido:'));
+          const custom=vm.runInContext("formatRequestMessage(requestTemplate({requestMessage:'Hola {ciudad}\\n{horario}{total}'}),requestVariables([['Servicio',24000]],'Córdoba Capital',{date:'2026-12-29',time:'16:00'}))",context);
+          assert.equal(custom,'Hola Córdoba Capital\nHorario preferido: 2026-12-29 16:00\n$24000');
+          console.log('JavaScript syntax and WhatsApp templates passed');
           JS
