@@ -605,5 +605,36 @@ loadReservations=async function(){
  await load();
 };
 
+
+const sandboxReturnUrl=new URL(location.href);
+let sandboxReturnedId='';
+if(sandboxReturnUrl.searchParams.has('sandbox_payment')){
+ const p=sandboxReturnUrl.searchParams.get('payment_id')||'';
+ if(/^[0-9]{1,30}$/.test(p))sandboxReturnedId=p;
+ for(const k of ['sandbox_payment','payment_id','collection_id','collection_status','status','external_reference','payment_type','merchant_order_id','preference_id','site_id','processing_mode','merchant_account_id'])sandboxReturnUrl.searchParams.delete(k);
+ history.replaceState(null,'',sandboxReturnUrl.pathname+sandboxReturnUrl.search+sandboxReturnUrl.hash);
+}
+const sandboxEdit=editRender;
+editRender=function(){
+ sandboxEdit();if(adminTab!=='payments'||!ownerSession())return;
+ const panel=document.createElement('section');panel.className='adminbox';
+ const title=document.createElement('h3');title.textContent='Prueba aislada de Mercado Pago';
+ const note=document.createElement('p');note.className='muted';note.textContent='Usá exclusivamente cuentas y tarjetas de prueba. Esta prueba no utiliza la cuenta comercial de Lucy, no crea turnos y no confirma reservas.';
+ const create=document.createElement('button');create.type='button';create.className='secondary';create.textContent='Generar checkout de prueba';
+ const label=document.createElement('label');label.textContent='ID del pago de prueba';
+ const input=document.createElement('input');input.type='text';input.inputMode='numeric';input.maxLength=30;input.value=sandboxReturnedId;input.autocomplete='off';label.append(input);
+ const verify=document.createElement('button');verify.type='button';verify.className='secondary';verify.textContent='Verificar pago de prueba';
+ const out=document.createElement('p');out.setAttribute('role','status');out.className='muted';
+ const go=document.createElement('a');go.className='secondary';go.target='_blank';go.rel='noopener noreferrer';go.hidden=true;go.textContent='Abrir entorno de prueba de Mercado Pago';
+ panel.append(title,note,create,go,label,verify,out);$('adminContent').append(panel);
+ const call=async(action,payload={})=>{
+  const r=await fetch('https://mercadopago-integraciones.aquipinocqn.workers.dev/v1/merchants/lucy-b-nails/'+action,{method:'POST',headers:{Authorization:'Bearer '+adminToken,'Content-Type':'application/json'},body:JSON.stringify(payload)});
+  if(!r.ok)throw Error();return r.json()
+ };
+ const labels={not_configured:'Faltan las credenciales de prueba en el servidor central.',seller_must_be_separate:'La cuenta de prueba debe ser diferente de la cuenta comercial.',test_seller_mismatch:'El ID del vendedor de prueba no coincide con las credenciales.',test_in_progress:'Ya hay una prueba iniciada. Revisá antes de crear otra.',preference_requires_review:'Mercado Pago no devolvió una preferencia de prueba válida.',test_provider_error:'No se pudo consultar Mercado Pago.',invalid_payment_id:'Ingresá un ID numérico válido.',not_a_test_payment:'No es un pago de prueba válido de este vendedor.',test_amount_or_reference_mismatch:'El importe o la referencia no coincide.'};
+ create.onclick=async()=>{if(!ownerSession()||!confirm('¿Generar una preferencia de prueba? Usá únicamente el entorno de prueba.'))return;create.disabled=true;go.hidden=true;out.textContent='Preparando checkout de prueba…';try{const p=await call('sandbox-create');if(p.test==='ready'){const u=new URL(p.checkout_url);if(u.protocol!=='https:'||!['sandbox.mercadopago.com','sandbox.mercadopago.com.ar'].includes(u.hostname)||u.username||u.password||u.port)throw Error();go.href=u.toString();go.hidden=false;out.textContent='Preferencia de prueba creada por '+money(p.amount)+'. No se creó ninguna reserva.'}else out.textContent=labels[p.test]||'Prueba no disponible.'}catch{out.textContent='No se pudo generar el checkout de prueba.'}finally{create.disabled=false}};
+ verify.onclick=async()=>{if(!ownerSession())return;const id=input.value.trim();if(!/^[0-9]{1,30}$/.test(id)){out.textContent=labels.invalid_payment_id;return}verify.disabled=true;out.textContent='Consultando el pago directamente en Mercado Pago…';try{const p=await call('sandbox-check',{payment_id:id});out.textContent=p.test==='payment_verified'?'Pago de prueba verificado. Estado: '+({approved:'aprobado',pending:'pendiente',rejected:'rechazado',in_process:'en proceso',cancelled:'cancelado'}[p.payment_status]||'otro')+'. Importe: '+money(p.amount)+'. Ningún turno comercial fue modificado.':labels[p.test]||'No se pudo verificar el pago.'}catch{out.textContent='No se pudo verificar el pago.'}finally{verify.disabled=false}};
+};
+
 render();loadConfig().catch(()=>{onlineReady=false;render()});
 </script></html>
