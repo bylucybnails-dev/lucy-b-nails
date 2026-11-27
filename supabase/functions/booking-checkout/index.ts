@@ -10,6 +10,28 @@ Deno.serve(async(req:Request)=>{
  if(req.headers.get('Origin')!==ORIGIN)return json({error:'forbidden'},403);
  if(req.method==='OPTIONS')return new Response(null,{status:204,headers});
  if(req.method!=='POST')return json({error:'method_not_allowed'},405);
+ if(new URL(req.url).searchParams.get('diagnostic')==='turnstile'){
+  try{
+   const auth=req.headers.get('Authorization')||'',service=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||'',base=Deno.env.get('SUPABASE_URL')||'';
+   if(!auth.startsWith('Bearer ')||!service||!base)return json({error:'unauthorized'},401);
+   const u=await fetch(base+'/auth/v1/user',{headers:{apikey:service,Authorization:auth},signal:AbortSignal.timeout(8000)});
+   if(!u.ok)return json({error:'unauthorized'},401);
+   const user=await u.json();
+   if(!user.email_confirmed_at||user.app_metadata?.lucy_role!=='admin')return json({error:'forbidden'},403);
+   const secret=Deno.env.get('TURNSTILE_SECRET_KEY')||'';
+   if(!secret)return json({error:'captcha_not_configured'},503);
+   const reader=req.body?.getReader();if(!reader)return json({error:'invalid_input'},400);
+   let n=0;const chunks:Uint8Array[]=[];
+   while(true){const {done,value}=await reader.read();if(done)break;n+=value.byteLength;if(n>4096){await reader.cancel();return json({error:'body_too_large'},413)}chunks.push(value)}
+   const bytes=new Uint8Array(n);let offset=0;for(const c of chunks){bytes.set(c,offset);offset+=c.byteLength}
+   const b=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
+   if(typeof b.token!=='string'||!b.token||b.token.length>2048)return json({error:'invalid_token'},400);
+   const response=await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({secret,response:b.token}),signal:AbortSignal.timeout(8000)});
+   const v=response.ok?await response.json():null;
+   if(v?.success!==true||v.hostname!==new URL(ORIGIN).hostname||v.action!=='booking_checkout')return json({error:'captcha_invalid'},403);
+   return json({verified:true,payments_enabled:false});
+  }catch{return json({error:'diagnostic_failed'},503)}
+ }
  if(!RELEASED||Deno.env.get('MP_PAYMENTS_ENABLED')!=='true')return json({error:'payments_disabled'},503);
  const secret=Deno.env.get('MP_BRIDGE_SECRET')||'',service=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||'',base=Deno.env.get('SUPABASE_URL')||'';
  if(!/^[0-9a-f]{64}$/i.test(secret)||!service||!base)return json({error:'not_configured'},503);
