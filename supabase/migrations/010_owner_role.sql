@@ -1,0 +1,4 @@
+alter policy owner_update_config on public.shop_config using ((select auth.jwt()->'app_metadata'->>'lucy_role')='admin') with check ((select auth.jwt()->'app_metadata'->>'lucy_role')='admin');
+alter policy owner_read_appointments on public.appointments using ((select auth.jwt()->'app_metadata'->>'lucy_role')='admin');
+alter policy owner_insert_manual on public.appointments with check ((select auth.jwt()->'app_metadata'->>'lucy_role')='admin' and source='manual' and status='confirmed' and payment_id is null and deposit_ars=0);
+alter policy owner_cancel_manual on public.appointments using ((select auth.jwt()->'app_metadata'->>'lucy_role')='admin' and source='manual' and status='confirmed') with check ((select auth.jwt()->'app_metadata'->>'lucy_role')='admin' and source='manual' and status='cancelled');
