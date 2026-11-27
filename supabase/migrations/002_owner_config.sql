@@ -1,0 +1,2 @@
+grant update(payload,revision) on public.shop_config to authenticated;
+create policy owner_update_config on public.shop_config for update to authenticated using ((select auth.jwt()->>'email')='by.lucyb.nails@gmail.com' and (select auth.jwt()->'app_metadata'->>'provider')='email') with check ((select auth.jwt()->>'email')='by.lucyb.nails@gmail.com' and (select auth.jwt()->'app_metadata'->>'provider')='email');
