@@ -61,5 +61,19 @@ saveAdmin=async function(){
  catch(e){$('adminStatus').textContent=e.message;alert(e.message)}finally{btn.disabled=false}
 };
 $('adminLoginForm').addEventListener('submit',loginAdmin);
+
+let occupied=[],availabilityReady=false;
+function slotOccupied(r){const t=Date.parse(r.date+'T'+r.time+':00-03:00');return occupied.some(a=>Date.parse(a.starts_at)<=t&&t<Date.parse(a.ends_at))}
+const previousSlot=currentSlot;
+currentSlot=function(){const s=previousSlot();return availabilityReady&&s&&!slotOccupied(s)?s:undefined};
+const previousRender=render;
+render=function(){previousRender();document.querySelectorAll('#options .slot').forEach(b=>{const m=b.getAttribute('onclick')?.match(/pickSlot\('([^']+)'\)/);if(m){const r=data.slots.find(s=>keySlot(s)===m[1]);if(!availabilityReady||r&&slotOccupied(r)){b.disabled=true;if(r&&slotOccupied(r))b.textContent=r.time+' · Ocupado'}}})};
+const previousLoad=loadConfig;
+loadConfig=async function(){availabilityReady=false;await previousLoad();try{occupied=await request('/rest/v1/occupied_intervals?select=starts_at,ends_at');availabilityReady=true;}catch{availabilityReady=false}render()};
+tabs.reservations='Reservas';
+const previousEdit=editRender;
+editRender=function(){if(adminTab!=='reservations'){previousEdit();return} $('editor').innerHTML='<nav class="adminnav"></nav><div id="adminContent"><h2>Reservas</h2><p>Cargando…</p></div>';const nav=$('editor').querySelector('nav');Object.entries(tabs).forEach(([k,v])=>{const b=document.createElement('button');b.textContent=v;b.className=k===adminTab?'active':'';b.onclick=()=>{adminTab=k;editRender()};nav.append(b)});loadReservations()};
+async function loadReservations(){const c=$('adminContent');try{const rows=await request('/rest/v1/appointments?select=id,city,starts_at,ends_at,customer_name,customer_phone,selection,total_ars,deposit_ars,status&order=starts_at.asc&limit=200',{},adminToken);if(!c.isConnected)return;const labels={held:'Pendiente de pago',confirmed:'Confirmada',cancelled:'Cancelada',expired:'Vencida',payment_review:'Revisión de pago'};c.innerHTML='<h2>Reservas recibidas</h2><p class="muted">Hasta 200 registros, ordenados por fecha.</p>'+ (rows.length?rows.map(r=>'<div class="adminbox" style="margin-bottom:10px"><b>'+esc(r.customer_name)+'</b><p>'+esc(r.city===0?'Cosquín':'Córdoba Capital')+' · '+esc(new Date(r.starts_at).toLocaleString('es-AR',{timeZone:'America/Argentina/Cordoba'}))+'</p><p>WhatsApp: '+esc(r.customer_phone)+'</p><p>'+esc(labels[r.status]||r.status)+' · Total '+money(r.total_ars)+' · Seña '+money(r.deposit_ars)+'</p></div>').join(''):'<p>Todavía no hay reservas registradas.</p>')}catch(e){if(c.isConnected)c.textContent='No se pudieron consultar las reservas. Revisá la sesión.'}}
+
 render();loadConfig().catch(()=>{onlineReady=false;render()});
 </script></html>
