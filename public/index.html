@@ -10,7 +10,7 @@ for(const d of [4,11,19,23,26,30])seed(1,d,[9,11,13,15,17,...([4,19,26].includes
 seed(0,2,[14,15,16]);seed(0,3,[14,15,16],[15]);seed(0,9,[14,15,16]);seed(0,10,[14,15,16,17]);seed(0,15,[14,15,16,17],[16]);seed(0,18,[14,15,16,17]);seed(0,22,[14,15,16,17],[17]);seed(0,29,[14,15,16,17],[15]);
 defaults.slots=seedSlots;defaults.deposit=30;defaults.blockedDays=[{z:0,date:'2026-12-21'}];if(!Array.isArray(data.slots))data.slots=structuredClone(seedSlots);if(!Array.isArray(data.blockedDays))data.blockedDays=structuredClone(defaults.blockedDays);if(!Number.isFinite(data.deposit))data.deposit=30;
 let selectedSlot='',adminZone=0,adminDate='2026-12-04',adminMonth='2026-12';const keySlot=r=>r.z+'|'+r.date+'|'+r.time;const fmtDate=d=>new Date(d+'T12:00:00').toLocaleDateString('es-AR',{weekday:'short',day:'numeric',month:'short'});const today=()=>new Intl.DateTimeFormat('sv-SE',{timeZone:'America/Argentina/Cordoba',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());const totalValue=()=>items().reduce((a,r)=>a+r[1],0);const depositValue=()=>Math.round(totalValue()*data.deposit/100);function currentSlot(){return data.slots.find(r=>keySlot(r)===selectedSlot&&r.z===zone&&!r.busy&&r.date>=today()&&!data.blockedDays.some(b=>b.z===r.z&&b.date===r.date))}function pickSlot(k){selectedSlot=k;render()}
-function render(){renderBase();if(zone===null)return;const panels=$('options').querySelectorAll('section');const last=panels[panels.length-1];const rows=data.slots.filter(r=>r.z===zone&&r.date>=today()).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));const dates=[...new Set([...rows.map(r=>r.date),...data.blockedDays.filter(b=>b.z===zone&&b.date>=today()).map(b=>b.date)])].sort();last.innerHTML=step(5,'Elegí tu turno')+'<p class="muted">Elegí un horario y solicitá tu turno por WhatsApp. Lucy confirmará la disponibilidad.</p>'+ (dates.length?dates.map(d=>{const blocked=data.blockedDays.some(b=>b.z===zone&&b.date===d);return `<div class="daycard"><b>${fmtDate(d)}</b><div class="slots">${blocked?'<small>Sin disponibilidad</small>':rows.filter(r=>r.date===d).map(r=>`<button class="slot ${keySlot(r)===selectedSlot?'picked':''}" ${r.busy?'disabled':''} onclick="pickSlot('${keySlot(r)}')">${r.time}${r.busy?' · Ocupado':''}</button>`).join('')}</div></div>`}).join(''):'<p>No hay horarios cargados. Consultanos por WhatsApp.</p>');const summary=$('summary');const btn=summary.querySelector('.primary');btn.insertAdjacentHTML('beforebegin',`<div class="line"><span>Turno elegido</span><b>${currentSlot()?fmtDate(currentSlot().date)+' '+currentSlot().time:'Sin seleccionar'}</b></div><div class="line"><span>Seña (${data.deposit}%)</span><b>${money(depositValue())}</b></div><div class="line"><span>Saldo restante</span><b>${money(totalValue()-depositValue())}</b></div><button class="primary" ${!currentSlot()||service<0?'disabled':''} onclick="openBooking()">Reservar online · ${money(depositValue())}</button><p class="muted">Modo demostración: no realiza cobros.</p>`);$('zoneNote').textContent=zone===1?'Turnos limitados en Córdoba Capital.':''}
+function render(){renderBase();if(zone===null)return;const panels=$('options').querySelectorAll('section');const last=panels[panels.length-1];const rows=data.slots.filter(r=>r.z===zone&&Date.parse(r.date+'T'+r.time+':00-03:00')>Date.now()).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));const dates=[...new Set([...rows.map(r=>r.date),...data.blockedDays.filter(b=>b.z===zone&&b.date>=today()).map(b=>b.date)])].sort();last.innerHTML=step(5,'Elegí tu turno')+'<p class="muted">Elegí un horario y solicitá tu turno por WhatsApp. Lucy confirmará la disponibilidad.</p>'+ (dates.length?dates.map(d=>{const blocked=data.blockedDays.some(b=>b.z===zone&&b.date===d);return `<div class="daycard"><b>${fmtDate(d)}</b><div class="slots">${blocked?'<small>Sin disponibilidad</small>':rows.filter(r=>r.date===d).map(r=>`<button class="slot ${keySlot(r)===selectedSlot?'picked':''}" ${r.busy?'disabled':''} onclick="pickSlot('${keySlot(r)}')">${r.time}${r.busy?' · Ocupado':''}</button>`).join('')}</div></div>`}).join(''):'<p>No hay horarios cargados. Consultanos por WhatsApp.</p>');const summary=$('summary');const btn=summary.querySelector('.primary');btn.insertAdjacentHTML('beforebegin',`<div class="line"><span>Turno elegido</span><b>${currentSlot()?fmtDate(currentSlot().date)+' '+currentSlot().time:'Sin seleccionar'}</b></div><div class="line"><span>Seña (${data.deposit}%)</span><b>${money(depositValue())}</b></div><div class="line"><span>Saldo restante</span><b>${money(totalValue()-depositValue())}</b></div><button class="primary" ${!currentSlot()||service<0?'disabled':''} onclick="openBooking()">Reservar online · ${money(depositValue())}</button><p class="muted">Modo demostración: no realiza cobros.</p>`);$('zoneNote').textContent=zone===1?'Turnos limitados en Córdoba Capital.':''}
 function openBooking(){if(!currentSlot()||!items().length)return;$('bookingDetails').textContent=city()+' · '+fmtDate(currentSlot().date)+' '+currentSlot().time+' · Seña '+money(depositValue());$('booking').showModal()}
 const oldPrepare=prepareSend;prepareSend=function(){oldPrepare();if(currentSlot())$('message').value+='\nHorario preferido: '+fmtDate(currentSlot().date)+' '+currentSlot().time;};
 let adminTab='agenda';
@@ -29,7 +29,7 @@ let revision=null,adminToken=null,onlineReady=false;
 async function request(path,options={},token=null){
  const res=await fetch(API+path,{...options,headers:{apikey:KEY,'Content-Type':'application/json',...(token?{Authorization:'Bearer '+token}:{}),...options.headers}});
  if(!res.ok)throw new Error('No se pudo completar la operación ('+res.status+').');
- return res.json();
+ const body=await res.text();return body?JSON.parse(body):{};
 }
 async function loadConfig(){
  const rows=await request('/rest/v1/shop_config?id=eq.1&select=payload,revision');
@@ -174,6 +174,38 @@ const releaseRender=render;
 render=function(){releaseRender();const summary=$('summary');if(summary){summary.querySelectorAll('button').forEach(b=>{if(b.getAttribute('onclick')==='openBooking()')b.remove()});summary.querySelectorAll('p').forEach(p=>{if(p.textContent.includes('Modo demostración'))p.remove()})}const now=Date.now();document.querySelectorAll('#options .slot').forEach(b=>{const m=b.getAttribute('onclick')?.match(/pickSlot\('([^']+)'\)/);if(m){const s=data.slots.find(x=>keySlot(x)===m[1]);if(s&&Date.parse(s.date+'T'+s.time+':00-03:00')<=now)b.disabled=true}})};
 const releaseSlot=currentSlot;
 currentSlot=function(){const s=releaseSlot();return s&&Date.parse(s.date+'T'+s.time+':00-03:00')>Date.now()?s:undefined};
+
+
+const agendaRender=render;
+let agendaMonth='',agendaZone=null;
+render=function(){
+ agendaRender();
+ if(zone===null)return;
+ const options=$('options'), panels=options.querySelectorAll('section'), agenda=panels[panels.length-1];
+ if(!agenda)return;
+ agenda.id='publicAgenda';
+ const rows=data.slots.filter(s=>s.z===zone&&Date.parse(s.date+'T'+s.time+':00-03:00')>Date.now()).sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+ const months=[...new Set(rows.map(s=>s.date.slice(0,7)))];
+ if(agendaZone!==zone||!months.includes(agendaMonth)){agendaMonth=months[0]||'';agendaZone=zone}
+ const dates=[...new Set(rows.filter(s=>s.date.startsWith(agendaMonth)).map(s=>s.date))];
+ const isFree=s=>availabilityReady&&!s.busy&&!slotOccupied(s)&&!data.blockedDays.some(b=>b.z===zone&&b.date===s.date);
+ const current=currentSlot();
+ const title=agendaMonth?new Date(agendaMonth+'-15T12:00:00').toLocaleDateString('es-AR',{month:'long',year:'numeric'}):'';
+ agenda.innerHTML=step(5,'Elegí tu horario')+'<p class="muted">Seleccioná un horario disponible y confirmalo con Lucy por WhatsApp.</p>';
+ if(!availabilityReady){agenda.insertAdjacentHTML('beforeend','<p class="notice">No pudimos verificar la disponibilidad. Podés consultar por WhatsApp o actualizar la agenda.</p><button class="secondary" onclick="refreshAgenda()">Actualizar horarios</button>')}
+ else if(!dates.length){agenda.insertAdjacentHTML('beforeend','<p class="notice">Todavía no hay horarios futuros cargados para esta ciudad.</p>')}
+ else{
+ const controls=document.createElement('div');controls.className='monthbar';
+ if(months.length>1){const prev=document.createElement('button'),next=document.createElement('button');prev.className=next.className='secondary';prev.textContent='‹';next.textContent='›';prev.disabled=months.indexOf(agendaMonth)===0;next.disabled=months.indexOf(agendaMonth)===months.length-1;prev.onclick=()=>{agendaMonth=months[months.indexOf(agendaMonth)-1];render()};next.onclick=()=>{agendaMonth=months[months.indexOf(agendaMonth)+1];render()};controls.append(prev);const t=document.createElement('b');t.textContent=title;controls.append(t,next)}else{controls.textContent=title}
+ agenda.append(controls);
+ const count=rows.filter(s=>s.date.startsWith(agendaMonth)&&isFree(s)).length;
+ const note=document.createElement('p');note.className='muted';note.textContent=count+' horarios disponibles · '+city();agenda.append(note);
+ for(const d of dates){const day=document.createElement('div');day.className='daycard';const label=document.createElement('b');label.textContent=fmtDate(d);day.append(label);const slots=document.createElement('div');slots.className='slots';for(const s of rows.filter(s=>s.date===d)){const b=document.createElement('button');const free=isFree(s);b.className='slot'+(current&&keySlot(current)===keySlot(s)?' picked':'');b.disabled=!free;b.textContent=s.time+(free?'':' · Ocupado');b.setAttribute('aria-pressed',String(!!current&&keySlot(current)===keySlot(s)));b.onclick=()=>{selectedSlot=keySlot(s);render();$('publicAgenda')?.scrollIntoView({block:'nearest'})};slots.append(b)}day.append(slots);agenda.append(day)}
+ }
+ const summary=$('summary');if(summary){const link=document.createElement('button');link.className='secondary';link.textContent=current?'Cambiar horario':'Ver horarios disponibles';link.onclick=()=>agenda.scrollIntoView({behavior:'smooth',block:'start'});summary.insertBefore(link,summary.querySelector('.primary'))}
+};
+async function refreshAgenda(){try{occupied=await request('/rest/v1/occupied_intervals?select=starts_at,ends_at');availabilityReady=true}catch{availabilityReady=false}render()}
+document.addEventListener('visibilitychange',()=>{if(!document.hidden&&onlineReady)refreshAgenda()});
 
 render();loadConfig().catch(()=>{onlineReady=false;render()});
 </script></html>
