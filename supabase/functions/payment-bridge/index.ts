@@ -30,6 +30,8 @@ Deno.serve(async(req:Request)=>{
    rpc='register_deposit_preference';params={p_booking:body.booking_id,p_seller:body.seller_id,p_preference:body.preference_id};
   }else if(body.action==='apply_verified_deposit'&&numberId(body.payment_id)&&Number.isFinite(body.amount)&&body.amount>=0&&body.amount<=999999999999&&typeof body.currency==='string'&&/^[A-Z]{3}$/.test(body.currency)){
    rpc='apply_verified_deposit';params={p_booking:body.booking_id,p_seller:body.seller_id,p_payment:body.payment_id,p_amount:body.amount,p_currency:body.currency};
+  }else if(body.action==='record_deposit_incident'&&numberId(body.payment_id)&&['refunded','partial_refund','charged_back','in_mediation','amount_mismatch','late_or_unavailable','duplicate_deposit'].includes(body.kind)&&typeof body.updated_at==='string'&&Number.isFinite(Date.parse(body.updated_at))&&Number.isFinite(body.amount)&&Number.isFinite(body.refunded)&&body.amount>=0&&body.refunded>=0&&body.refunded<=body.amount&&body.amount<=999999999999){
+   rpc='record_deposit_incident';params={p_booking:body.booking_id,p_seller:body.seller_id,p_payment:body.payment_id,p_kind:body.kind,p_updated:body.updated_at,p_amount:body.amount,p_refunded:body.refunded};
   }else return json({error:'invalid_action'},400);
   const service=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
   const r=await fetch(Deno.env.get('SUPABASE_URL')+'/rest/v1/rpc/'+rpc,{method:'POST',headers:{apikey:service,Authorization:'Bearer '+service,'Content-Type':'application/json'},body:JSON.stringify(params),signal:AbortSignal.timeout(10000)});
