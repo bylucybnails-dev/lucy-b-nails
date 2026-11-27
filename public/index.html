@@ -435,5 +435,18 @@ editRender=function(){
  details.append(heading,body);c.append(details);update();
 };
 
+
+const mpEdit=editRender;
+editRender=function(){
+ mpEdit();if(adminTab!=='payments'||!ownerSession())return;
+ const c=$('adminContent'),d=document.createElement('section');d.className='adminbox';d.innerHTML='<h3>Mercado Pago</h3><p id="mpStatus" role="status" class="muted">Comprobando conexión…</p><button id="mpConnect" type="button" class="primary" hidden>Conectar mi cuenta de Mercado Pago</button><p class="muted">La autorización se realiza en Mercado Pago. No compartas tu contraseña. Los cobros online seguirán desactivados hasta completar las pruebas.</p>';c.prepend(d);
+ const status=d.querySelector('#mpStatus'),button=d.querySelector('#mpConnect');
+ const call=action=>request('/functions/v1/mp-oauth',{method:'POST',body:JSON.stringify({action})},adminToken);
+ call('status').then(r=>{if(!d.isConnected)return;if(r.connection){status.textContent='Cuenta vinculada · '+(r.connection.live_mode?'producción':'prueba')+' · ID de vendedor '+r.connection.seller_id+(Date.parse(r.connection.expires_at)<=Date.now()?' · autorización vencida':'');return}status.textContent=r.configured?'Sin conectar. Autorizá el acceso desde tu propia cuenta.':'Pendiente de configuración técnica del integrador.';button.hidden=!r.configured}).catch(()=>{if(d.isConnected)status.textContent='No pudimos comprobar la conexión. Volvé a abrir esta sección.'});
+ button.onclick=async()=>{if(!ownerSession())return;if(JSON.stringify(draft)!==JSON.stringify(data)){alert('Guardá tus cambios antes de conectar Mercado Pago.');return}button.disabled=true;try{const r=await call('start');const u=new URL(r.authorization_url);if(u.origin!=='https://auth.mercadopago.com'||u.pathname!=='/authorization')throw Error();location.assign(u.toString())}catch{status.textContent='No se pudo iniciar la conexión. Reintentá.';button.disabled=false}};
+};
+const mpResult=new URLSearchParams(location.search).get('mp_connection');
+if(mpResult){const u=new URL(location.href);u.searchParams.delete('mp_connection');history.replaceState(null,'',u.pathname+u.search+u.hash);const messages={connected:'Cuenta de Mercado Pago vinculada. Los cobros online todavía no están activos.',already_connected:'Ya hay una cuenta vinculada.',cancelled:'Cancelaste la vinculación de Mercado Pago.',expired:'La solicitud venció. Volvé a iniciar la conexión.',not_configured:'La integración todavía no está configurada.',provider_error:'Mercado Pago no pudo completar la vinculación.'};document.addEventListener('DOMContentLoaded',()=>{alert(messages[mpResult]||'No se pudo completar la vinculación. Volvé a intentarlo desde Mi negocio.')},{once:true})}
+
 render();loadConfig().catch(()=>{onlineReady=false;render()});
 </script></html>
