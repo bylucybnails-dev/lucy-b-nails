@@ -20,6 +20,12 @@ Deno.serve(async(req:Request)=>{
   const bytes=new Uint8Array(n);let offset=0;for(const c of chunks){bytes.set(c,offset);offset+=c.byteLength}
   const b=JSON.parse(new TextDecoder('utf-8',{fatal:true}).decode(bytes));
   if(!b||!integer(b.city,0,1)||typeof b.date!=='string'||!/^\d{4}-\d{2}-\d{2}$/.test(b.date)||typeof b.time!=='string'||!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(b.time)||!integer(b.revision,1,Number.MAX_SAFE_INTEGER)||!['services','own','other'].includes(b.mode)||!integer(b.service,0,1000)||!integer(b.qty,1,10)||!integer(b.removal,-1,1000)||!integer(b.duration,15,480)||typeof b.name!=='string'||b.name.trim().length<1||b.name.trim().length>120||typeof b.phone!=='string'||b.phone.trim().length<5||b.phone.trim().length>40||!b.extras||typeof b.extras!=='object'||Array.isArray(b.extras)||Object.keys(b.extras).length>30||Object.entries(b.extras).some(([k,v])=>!/^\d{1,5}$/.test(k)||!integer(v,0,5)))return json({error:'invalid_input'},400);
+  const captchaSecret=Deno.env.get('TURNSTILE_SECRET_KEY')||'';
+  if(!captchaSecret)return json({error:'captcha_not_configured'},503);
+  if(typeof b.turnstile_token!=='string'||b.turnstile_token.length<1||b.turnstile_token.length>2048)return json({error:'captcha_required'},400);
+  const captcha=await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({secret:captchaSecret,response:b.turnstile_token}),signal:AbortSignal.timeout(8000)});
+  const verification=captcha.ok?await captcha.json():null;
+  if(verification?.success!==true||verification.hostname!==new URL(ORIGIN).hostname||verification.action!=='booking_checkout')return json({error:'captcha_invalid'},403);
   const authHeaders={apikey:service,Authorization:'Bearer '+service,'Content-Type':'application/json'};
   let customerId:string|null=null;
   // Never trust a caller-supplied customer ID; resolve the session with Auth.
@@ -31,13 +37,11 @@ Deno.serve(async(req:Request)=>{
    if(!user.id||!user.email_confirmed_at||user.is_anonymous||user.app_metadata?.lucy_role==='admin')return json({error:'invalid_session'},401);
    customerId=user.id;
   }
-  const r=await fetch(base+'/rest/v1/rpc/create_booking_hold',{method:'POST',headers:authHeaders,body:JSON.stringify({p_city:b.city,p_date:b.date,p_time:b.time,p_revision:b.revision,p_mode:b.mode,p_service:b.service,p_qty:b.qty,p_extras:b.extras,p_removal:b.removal,p_name:b.name,p_phone:b.phone,p_duration:b.duration}),signal:AbortSignal.timeout(10000)});
+  const r=await fetch(base+'/rest/v1/rpc/create_protected_booking_hold',{method:'POST',headers:authHeaders,body:JSON.stringify({p_city:b.city,p_date:b.date,p_time:b.time,p_revision:b.revision,p_mode:b.mode,p_service:b.service,p_qty:b.qty,p_extras:b.extras,p_removal:b.removal,p_name:b.name,p_phone:b.phone,p_duration:b.duration,p_customer:customerId}),signal:AbortSignal.timeout(10000)});
   if(!r.ok)return json({error:'hold_unavailable'},409);
   const hold=await r.json();
   if(!hold.id||!Number.isSafeInteger(hold.deposit)||hold.deposit<=0)return json({error:'checkout_unavailable'},409);
-  const link=await fetch(base+'/rest/v1/appointments?id=eq.'+encodeURIComponent(hold.id)+'&status=eq.held&select=id,lookup_code',{method:'PATCH',headers:{...authHeaders,Prefer:'return=representation'},body:JSON.stringify({customer_user_id:customerId}),signal:AbortSignal.timeout(8000)});
-  const rows=link.ok?await link.json():[];
-  if(rows.length!==1||!rows[0].lookup_code)return json({error:'checkout_unavailable'},503);
+  if(!hold.lookup_code)return json({error:'checkout_unavailable'},503);
   const raw=JSON.stringify({tenant:'lucy-b-nails',booking_id:hold.id,deposit_ars:hold.deposit,expires_at:hold.expires_at});
   const ts=String(Date.now()),key=await crypto.subtle.importKey('raw',enc.encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign']);
   const sig=Array.from(new Uint8Array(await crypto.subtle.sign('HMAC',key,enc.encode('checkout:lucy-b-nails:'+ts+':'+raw))),x=>x.toString(16).padStart(2,'0')).join('');
@@ -45,6 +49,6 @@ Deno.serve(async(req:Request)=>{
   if(!checkout.ok)return json({error:'checkout_unavailable',expires_at:hold.expires_at},503);
   const p=await checkout.json(),url=new URL(p.checkout_url);
   if(url.protocol!=='https:'||!['www.mercadopago.com.ar','mercadopago.com.ar','www.mercadopago.com','mercadopago.com'].includes(url.hostname)||url.username||url.password||url.port)return json({error:'invalid_checkout'},503);
-  return json({booking_id:hold.id,lookup_code:rows[0].lookup_code,total:hold.total,deposit:hold.deposit,expires_at:hold.expires_at,checkout_url:url.toString()});
+  return json({booking_id:hold.id,lookup_code:hold.lookup_code,total:hold.total,deposit:hold.deposit,expires_at:hold.expires_at,checkout_url:url.toString()});
  }catch{return json({error:'checkout_unavailable'},503)}
 });
