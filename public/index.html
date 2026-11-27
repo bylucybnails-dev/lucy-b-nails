@@ -99,5 +99,39 @@ prepareSend=function(){
  window.location.assign(url.toString());
 };
 
+
+const durationEdit=editRender;
+editRender=function(){
+ durationEdit();
+ if(!['services','own','other','extras'].includes(adminTab))return;
+ const k=adminTab, rows=$('adminContent').querySelectorAll('.adminitem');
+ rows.forEach((row,i)=>{
+ const item=draft[k][i];
+ const label=document.createElement('label');label.className='kind';
+ label.textContent=k==='extras'?'Minutos adicionales (por unidad)':'Duración del servicio (minutos)';
+ const input=document.createElement('input');input.type='number';input.min=k==='extras'?'0':'15';input.max='480';input.step='5';input.placeholder='Sin configurar';input.value=item[4]??'';
+ input.oninput=()=>{item[4]=input.value===''?null:Number(input.value)};
+ label.append(input);row.append(label);
+ });
+};
+const durationSave=saveAdmin;
+saveAdmin=function(){
+ for(const k of ['services','own','other','extras'])for(const r of draft[k])if(r[4]!=null&&(!Number.isInteger(r[4])||r[4]<(k==='extras'?0:15)||r[4]>480)){alert('Revisá las duraciones de los servicios.');return}
+ return durationSave();
+};
+function estimatedDuration(){
+ if(service<0||zone===null)return null;
+ const row=data[mode][service];if(!Number.isInteger(row?.[4]))return null;
+ let n=row[4]*qty;
+ for(const [i,q] of Object.entries(extras)){if(!q)continue;const x=data.extras[i];if(!Number.isInteger(x?.[4]))return null;n+=x[4]*q;}
+ if(ret>=0){const x=data.other[ret];if(!Number.isInteger(x?.[4]))return null;n+=x[4];}
+ return n;
+}
+const durationRender=render;
+render=function(){
+ durationRender();if(zone===null||service<0)return;
+ const n=estimatedDuration();if(n!==null){const p=document.createElement('p');p.className='muted';p.textContent='Duración estimada: '+n+' min';$('summary').append(p)}
+};
+
 render();loadConfig().catch(()=>{onlineReady=false;render()});
 </script></html>
