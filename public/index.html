@@ -151,7 +151,23 @@ const signup=tab==='signup';c.innerHTML='<h3>'+(signup?'Creá tu cuenta':'Bienve
 const guardedOpen=openAdmin;
 openAdmin=async function(){if(!ownerSession()){showAccount('login');return}await guardedOpen()};
 logoutAdmin=signOutAccount;
-restoreAccount();
+
+const accountShowBase=showAccount;
+showAccount=function(tab){
+ if(tab!=='recover'&&tab!=='newpassword'){
+ accountShowBase(tab);
+ if(accountTab==='login'){const b=document.createElement('button');b.className='secondary';b.textContent='Olvidé mi contraseña';b.onclick=()=>showAccount('recover');$('accountBody').append(b)}
+ if(accountTab==='profile'){const b=document.createElement('button');b.className='secondary';b.textContent='Cambiar contraseña';b.onclick=()=>showAccount('newpassword');$('accountBody').append(b)}
+ return}
+ accountTab=tab;$('accountStatus').textContent='';$('accountTabs').replaceChildren();if(!$('account').open)$('account').showModal();
+ const c=$('accountBody');
+ if(tab==='recover'){c.innerHTML='<h3>Recuperá tu contraseña</h3><p>Te enviaremos un enlace a tu correo para elegir una nueva contraseña.</p><form><label>Correo electrónico<input type="email" name="email" required autocomplete="email"></label><button class="primary" type="submit">Enviar enlace</button></form><button class="secondary" onclick="showAccount(\'login\')">Volver</button>';const f=c.querySelector('form');f.onsubmit=async e=>{e.preventDefault();const b=f.querySelector('button');b.disabled=true;try{await request('/auth/v1/recover?redirect_to='+encodeURIComponent(location.origin+'/'),{method:'POST',body:JSON.stringify({email:f.elements.email.value.trim().toLowerCase()})});$('accountStatus').textContent='Si la cuenta existe, recibirás un correo con las instrucciones.'}catch{$('accountStatus').textContent='No se pudo solicitar el enlace. Intentá más tarde.'}finally{b.disabled=false}};return}
+ if(!customerSession){showAccount('login');return}
+ c.innerHTML='<h3>Elegí tu nueva contraseña</h3><form><label>Nueva contraseña<input type="password" name="password" minlength="8" required autocomplete="new-password"></label><label>Repetir contraseña<input type="password" name="repeat" minlength="8" required autocomplete="new-password"></label><button class="primary" type="submit">Guardar contraseña</button></form><button class="secondary" onclick="showAccount(\'profile\')">Volver</button>';
+ const f=c.querySelector('form');f.onsubmit=async e=>{e.preventDefault();if(f.elements.password.value!==f.elements.repeat.value){$('accountStatus').textContent='Las contraseñas no coinciden.';return}const b=f.querySelector('button');b.disabled=true;try{await request('/auth/v1/user',{method:'PUT',body:JSON.stringify({password:f.elements.password.value})},customerSession.access_token);f.reset();await signOutAccount();showAccount('login');$('accountStatus').textContent='Contraseña actualizada. Iniciá sesión nuevamente.'}catch{$('accountStatus').textContent='No se pudo actualizar la contraseña. Volvé a solicitar el enlace o iniciá sesión.'}finally{b.disabled=false}};
+};
+const recoveryFlow=new URLSearchParams(location.hash.slice(1)).get('type')==='recovery';
+restoreAccount().then(()=>{if(recoveryFlow&&customerSession)showAccount('newpassword')});
 
 render();loadConfig().catch(()=>{onlineReady=false;render()});
 </script></html>
