@@ -570,5 +570,40 @@ editRender=function(){checkoutAdmin();if(adminTab!=='payments'||!ownerSession())
  };
 };
 
+
+const depositIncidentLabels={refunded:'Devolución total',partial_refund:'Devolución parcial',charged_back:'Contracargo',in_mediation:'Pago en disputa',amount_mismatch:'Importe o moneda incorrectos',late_or_unavailable:'Pago fuera del plazo',duplicate_deposit:'Pago duplicado'};
+const incidentReservations=loadReservations;
+loadReservations=async function(){
+ await incidentReservations();
+ const c=$('adminContent');if(adminTab!=='reservations'||!c||!ownerSession())return;
+ const panel=document.createElement('section');panel.className='adminbox';panel.innerHTML='<h3>Incidencias de señas</h3><p class="muted">Revisá pagos que requieren atención. Marcar como revisado no devuelve dinero, no cancela turnos y no resuelve disputas en Mercado Pago.</p>';
+ const list=document.createElement('div'),status=document.createElement('p');status.setAttribute('role','status');status.className='muted';panel.append(status,list);c.prepend(panel);
+ const load=async()=>{
+  status.textContent='Consultando incidencias…';list.replaceChildren();
+  try{
+   const rows=await request('/rest/v1/deposit_incidents?select=payment_id,appointment_id,kind,provider_updated_at,amount_ars,refunded_ars,reviewed_at&order=provider_updated_at.desc&limit=100',{},adminToken);
+   if(!panel.isConnected||!ownerSession())return;
+   if(!Array.isArray(rows))throw Error();
+   const pending=rows.filter(r=>!r.reviewed_at);status.textContent=pending.length?pending.length+' incidencia(s) sin revisar entre las últimas 100.':'No hay incidencias sin revisar entre las últimas 100.';
+   const reviewed=document.createElement('details');const title=document.createElement('summary');title.textContent='Historial revisado';reviewed.append(title);
+   for(const r of rows){
+    const item=document.createElement('article');item.className='adminbox';
+    const label=document.createElement('h3');label.textContent=depositIncidentLabels[r.kind]||r.kind;
+    const info=document.createElement('p');info.textContent='Pago '+r.payment_id+' · '+new Date(r.provider_updated_at).toLocaleString('es-AR',{timeZone:'America/Argentina/Cordoba'});
+    const amount=document.createElement('p');amount.textContent='Importe informado: '+money(r.amount_ars)+' · Devuelto: '+money(r.refunded_ars);
+    const code=document.createElement('small');code.textContent='Reserva: '+r.appointment_id;code.style.overflowWrap='anywhere';
+    item.append(label,info,amount,code);
+    if(!r.reviewed_at){
+     const b=document.createElement('button');b.type='button';b.className='secondary';b.textContent='Marcar como revisado';
+     b.onclick=async()=>{if(!ownerSession()||!confirm('¿Marcar esta incidencia como revisada? No se modificará el pago ni el turno.'))return;b.disabled=true;try{const q=new URLSearchParams({payment_id:'eq.'+r.payment_id,kind:'eq.'+r.kind,provider_updated_at:'eq.'+r.provider_updated_at,reviewed_at:'is.null'});const x=await request('/rest/v1/deposit_incidents?'+q,{method:'PATCH',headers:{Prefer:'return=representation'},body:JSON.stringify({reviewed_at:new Date().toISOString()})},adminToken);if(!Array.isArray(x)||x.length!==1)throw Error();await load()}catch{status.textContent='No se pudo marcar la incidencia. Reintentá.';b.disabled=false}};
+     item.append(b);list.append(item)
+    }else reviewed.append(item);
+   }
+   if(reviewed.children.length>1)list.append(reviewed);
+  }catch{status.textContent='No se pudo consultar el historial de incidencias.'}
+ };
+ await load();
+};
+
 render();loadConfig().catch(()=>{onlineReady=false;render()});
 </script></html>
