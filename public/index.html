@@ -194,7 +194,7 @@ render=function(){
  const isFree=s=>publicSlotFits(s);
  const current=currentSlot();
  const title=agendaMonth?new Date(agendaMonth+'-15T12:00:00').toLocaleDateString('es-AR',{month:'long',year:'numeric'}):'';
- agenda.innerHTML=step(5,'Elegí tu horario')+'<p class="muted">Seleccioná un horario disponible y confirmalo con Lucy por WhatsApp.</p>';
+ agenda.innerHTML=step(5,'Elegí tu horario')+'<p class="muted">'+(PUBLIC_CHECKOUT_RELEASED?'Seleccioná un horario disponible para reservar con seña online.':'Seleccioná un horario disponible y consultá con Lucy por WhatsApp.')+'</p>';
  if(!availabilityReady){agenda.insertAdjacentHTML('beforeend','<p class="notice">No pudimos verificar la disponibilidad. Podés consultar por WhatsApp o actualizar la agenda.</p><button class="secondary" onclick="refreshAgenda()">Actualizar horarios</button>')}
  else if(!dates.length){agenda.insertAdjacentHTML('beforeend','<p class="notice">Todavía no hay horarios futuros cargados para esta ciudad.</p>')}
  else{
@@ -402,7 +402,17 @@ if(mpResult){const u=new URL(location.href);u.searchParams.delete('mp_connection
 
 // Checkout is intentionally gated. Enable only after provider and reservation tests.
 let PUBLIC_CHECKOUT_RELEASED=false;
-async function refreshPaymentAvailability(){let enabled=false;try{const r=await fetch(API+'/functions/v1/booking-checkout?status=1',{headers:{apikey:KEY},cache:'no-store',signal:AbortSignal.timeout(12000)});enabled=r.ok&&(await r.json()).payments_enabled===true}catch{}if(enabled!==PUBLIC_CHECKOUT_RELEASED){PUBLIC_CHECKOUT_RELEASED=enabled;render()}}
+let paymentAvailability='checking',paymentStatusSequence=0;
+async function refreshPaymentAvailability(){
+ const seq=++paymentStatusSequence;
+ let enabled=false,state='unavailable';
+ try{const r=await fetch(API+'/functions/v1/booking-checkout?status=1',{headers:{apikey:KEY},cache:'no-store',signal:AbortSignal.timeout(12000)});
+ if(r.ok){const v=await r.json();enabled=v.payments_enabled===true;state=enabled?'ready':'disabled'}}
+ catch{}
+ if(seq!==paymentStatusSequence)return;
+ const changed=enabled!==PUBLIC_CHECKOUT_RELEASED||state!==paymentAvailability;
+ PUBLIC_CHECKOUT_RELEASED=enabled;paymentAvailability=state;if(changed)render();
+}
 const TURNSTILE_SITE_KEY='0x4AAAAAAGWVL0eL3cUxUW_4'; // Public site key for Lucy; never put the secret here.
 const checkoutKey='lucyb-checkout-receipt-v1';
 let checkoutSnapshot=null,checkoutPreview=false,checkoutBusy=false,checkoutCaptchaToken='',checkoutCaptchaWidget=null,checkoutCaptchaLoader=null;
@@ -493,9 +503,24 @@ if(paymentReturn){
  document.addEventListener('DOMContentLoaded',()=>{if(!$('paymentResult').open)$('paymentResult').showModal();checkReturnedPayment()},{once:true});
 }
 const checkoutRender=render;
-render=function(){checkoutRender();if(!PUBLIC_CHECKOUT_RELEASED||!selectedCheckout())return;const b=document.createElement('button');b.className='primary';b.textContent='Reservar y pagar seña · '+money(depositValue());b.onclick=()=>openDepositCheckout(false);const summary=$('summary'),wa=summary.querySelector('button[onclick="prepareSend()"]');if(wa){wa.className='secondary';wa.before(b)}else summary.append(b)};
+render=function(){
+ checkoutRender();
+ if(zone===null||!items().length)return;
+ const summary=$('summary'),wa=summary.querySelector('button[onclick="prepareSend()"]');
+ const snap=selectedCheckout();
+ const note=document.createElement('p');note.className='muted';note.setAttribute('role','status');
+ if(PUBLIC_CHECKOUT_RELEASED){
+  const b=document.createElement('button');b.type='button';b.className='primary';b.textContent='Reservar y pagar seña · '+money(depositValue());b.disabled=!snap;b.onclick=()=>openDepositCheckout(false);
+  if(!snap){note.textContent=!availabilityReady?'No se pudo verificar la agenda. Actualizá los horarios.':!currentSlot()?'Elegí un horario disponible para continuar con la seña.':'Revisá el importe de la selección.'}
+  if(wa){wa.className='secondary';wa.before(b);if(note.textContent)wa.before(note)}else{summary.append(b);if(note.textContent)summary.append(note)}
+ }else{
+  note.textContent=paymentAvailability==='checking'?'Comprobando disponibilidad del pago online…':'Pago online momentáneamente no disponible. Podés solicitar el turno por WhatsApp.';
+  if(wa)wa.before(note);else summary.append(note);
+ }
+};
 const checkoutAdmin=editRender;
 editRender=function(){checkoutAdmin();if(adminTab!=='payments'||!ownerSession())return;const c=$('adminContent');const box=document.createElement('details');box.className='settingsCard';const title=document.createElement('summary');title.textContent='Diagnóstico técnico · Reserva online';const p=document.createElement('p');p.className='muted';p.textContent='Vista previa del checkout para clientas. Esta prueba no realiza cobros ni crea reservas.';const button=document.createElement('button');button.type='button';button.className='secondary';button.textContent='Probar vista previa del checkout';button.onclick=()=>openDepositCheckout(true);box.append(title,p,button);
+ const readinessButton=document.createElement('button');readinessButton.type='button';readinessButton.className='secondary';readinessButton.textContent='Comprobar activación del pago online';const readinessResult=document.createElement('p');readinessResult.setAttribute('role','status');readinessResult.className='muted';box.append(readinessButton,readinessResult);readinessButton.onclick=async()=>{if(!ownerSession())return;readinessButton.disabled=true;readinessResult.textContent='Consultando ambos servidores…';try{await refreshPaymentAvailability();readinessResult.textContent=paymentAvailability==='ready'?'Pago online habilitado en ambos servidores. Elegí ciudad, servicio y horario en la web pública.':paymentAvailability==='disabled'?'Los servidores respondieron, pero la activación no fue confirmada. Revisá el estado de Mercado Pago y las variables de activación.':'No se pudo consultar el estado del pago online.'}finally{readinessButton.disabled=false}};
  const test=document.createElement('button');test.type='button';test.className='secondary';test.textContent='Probar protección antirrobots';
  const holder=document.createElement('div'),out=document.createElement('p');out.className='muted';out.setAttribute('role','status');box.append(test,holder,out);c.append(box);
  let widget=null;
