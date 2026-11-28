@@ -1,14 +1,19 @@
 // Checkout entrypoint. Disabled until end-to-end tests and anti-abuse controls are complete.
-const RELEASED=false;
+const RELEASED=true; // owner-authorized; runtime switches and central readiness are still required
 const ORIGIN='https://lucy-b-nails.by-lucyb-nails.workers.dev';
 const CENTRAL='https://mercadopago-integraciones.aquipinocqn.workers.dev/internal/v1/merchants/lucy-b-nails/checkout';
 const enc=new TextEncoder();
-const headers={'Content-Type':'application/json','Cache-Control':'no-store','Access-Control-Allow-Origin':ORIGIN,'Access-Control-Allow-Headers':'authorization,apikey,content-type','Access-Control-Allow-Methods':'POST,OPTIONS','Vary':'Origin'};
+const headers={'Content-Type':'application/json','Cache-Control':'no-store','Access-Control-Allow-Origin':ORIGIN,'Access-Control-Allow-Headers':'authorization,apikey,content-type','Access-Control-Allow-Methods':'GET,POST,OPTIONS','Vary':'Origin'};
 const json=(v:unknown,s=200)=>new Response(JSON.stringify(v),{status:s,headers});
 const integer=(v:unknown,lo:number,hi:number)=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=lo&&v<=hi;
+async function readyForCheckout(){
+ if(!RELEASED||Deno.env.get('MP_PAYMENTS_ENABLED')!=='true'||!Deno.env.get('TURNSTILE_SECRET_KEY')||!Deno.env.get('MP_BRIDGE_SECRET')||!Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'))return false;
+ try{const r=await fetch(CENTRAL.replace(/\/checkout$/,'/readiness'),{signal:AbortSignal.timeout(10000)});return r.ok&&(await r.json()).payments_enabled===true}catch{return false}
+}
 Deno.serve(async(req:Request)=>{
  if(req.headers.get('Origin')!==ORIGIN)return json({error:'forbidden'},403);
  if(req.method==='OPTIONS')return new Response(null,{status:204,headers});
+ if(req.method==='GET'&&new URL(req.url).searchParams.get('status')==='1')return json({payments_enabled:await readyForCheckout()});
  if(req.method!=='POST')return json({error:'method_not_allowed'},405);
  if(new URL(req.url).searchParams.get('diagnostic')==='turnstile'){
   try{
@@ -29,10 +34,10 @@ Deno.serve(async(req:Request)=>{
    const response=await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({secret,response:b.token}),signal:AbortSignal.timeout(8000)});
    const v=response.ok?await response.json():null;
    if(v?.success!==true||v.hostname!==new URL(ORIGIN).hostname||v.action!=='booking_checkout')return json({error:'captcha_invalid'},403);
-   return json({verified:true,payments_enabled:false});
+   return json({verified:true,payments_enabled:await readyForCheckout()});
   }catch{return json({error:'diagnostic_failed'},503)}
  }
- if(!RELEASED||Deno.env.get('MP_PAYMENTS_ENABLED')!=='true')return json({error:'payments_disabled'},503);
+ if(!await readyForCheckout())return json({error:'payments_disabled'},503);
  const secret=Deno.env.get('MP_BRIDGE_SECRET')||'',service=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')||'',base=Deno.env.get('SUPABASE_URL')||'';
  if(!/^[0-9a-f]{64}$/i.test(secret)||!service||!base)return json({error:'not_configured'},503);
  try{
