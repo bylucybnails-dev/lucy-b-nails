@@ -40,11 +40,16 @@ jobs:
           const custom=vm.runInContext("formatRequestMessage(requestTemplate({requestMessage:'Hola {ciudad}\\n{horario}{total}'}),requestVariables([['Servicio',24000]],'Córdoba Capital',{date:'2026-12-29',time:'16:00'}))",context);
           assert.equal(custom,'Hola Córdoba Capital\nHorario preferido: 2026-12-29 16:00\n$24000');
           for(const id of ['booking','checkoutForm','checkoutSummary','checkoutNext','paymentResult','paymentRefresh']) assert(html.includes('id="'+id+'"'), 'Missing checkout '+id);
-          assert(source.includes('const PUBLIC_CHECKOUT_RELEASED=false;'), 'Public checkout must stay locked before release');
+          assert(source.includes('let PUBLIC_CHECKOUT_RELEASED=false;') && source.includes('payments_enabled===true'), 'Public checkout must fail closed until server readiness');
           const startCheckout = source.indexOf('function checkoutBreakdown(s)');
           const endCheckout = source.indexOf('function openDepositCheckout',startCheckout);
           assert(startCheckout>=0 && endCheckout>startCheckout);
-          const checkoutContext=vm.createContext({money:n=>'
+          const checkoutContext=vm.createContext({money:n=>'fmtDate:d=>d,esc:s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')});
+          vm.runInContext(source.slice(startCheckout,endCheckout),checkoutContext);
+          const breakdown=vm.runInContext("checkoutBreakdown({city:0,date:null,total:20000,deposit:6000,lines:[['<Servicio>',20000]]})",checkoutContext);
+          assert(breakdown.includes('&lt;Servicio&gt;') && breakdown.includes('$6000') && breakdown.includes('$14000'));
+          console.log('JavaScript syntax, WhatsApp templates and locked checkout preview validated');
+
           JS
 +n,fmtDate:d=>d,esc:s=>String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')});
           vm.runInContext(source.slice(startCheckout,endCheckout),checkoutContext);
