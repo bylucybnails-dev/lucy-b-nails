@@ -61,7 +61,7 @@ Deno.serve(async(req:Request)=>{
    const u=await fetch(base+'/auth/v1/user',{headers:{apikey:service,Authorization:'Bearer '+b.customer_access_token},signal:AbortSignal.timeout(8000)});
    if(!u.ok)return json({error:'invalid_session'},401);
    const user=await u.json();
-   if(!user.id||!user.email_confirmed_at||user.is_anonymous||user.app_metadata?.lucy_role==='admin')return json({error:'invalid_session'},401);
+   if(!user.id||!user.email_confirmed_at||user.is_anonymous)return json({error:'invalid_session'},401);
    customerId=user.id;
   }
   const r=await fetch(base+'/rest/v1/rpc/create_protected_booking_hold',{method:'POST',headers:authHeaders,body:JSON.stringify({p_city:b.city,p_date:b.date,p_time:b.time,p_revision:b.revision,p_mode:b.mode,p_service:b.service,p_qty:b.qty,p_extras:b.extras,p_removal:b.removal,p_name:b.name,p_phone:b.phone,p_duration:b.duration,p_customer:customerId}),signal:AbortSignal.timeout(10000)});
@@ -76,6 +76,6 @@ Deno.serve(async(req:Request)=>{
   if(!checkout.ok)return json({error:'checkout_unavailable',expires_at:hold.expires_at},503);
   const p=await checkout.json(),url=new URL(p.checkout_url);
   if(url.protocol!=='https:'||!['www.mercadopago.com.ar','mercadopago.com.ar','www.mercadopago.com','mercadopago.com'].includes(url.hostname)||url.username||url.password||url.port)return json({error:'invalid_checkout'},503);
-  return json({booking_id:hold.id,lookup_code:hold.lookup_code,total:hold.total,deposit:hold.deposit,expires_at:hold.expires_at,checkout_url:url.toString()});
+  return json({booking_id:hold.id,lookup_code:hold.lookup_code,linked:customerId!==null,total:hold.total,deposit:hold.deposit,expires_at:hold.expires_at,checkout_url:url.toString()});
  }catch{return json({error:'checkout_unavailable'},503)}
 });
